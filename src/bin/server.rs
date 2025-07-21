@@ -5,7 +5,6 @@ use std::{
 
 use bytes::Bytes;
 use mini_redis::{Command, Frame};
-// use mini_redis::Connection;
 use tokio::net::{TcpListener, TcpStream};
 
 use learn_tokio::connection::Connection;
@@ -23,6 +22,7 @@ async fn process(socket: TcpStream, db: Db) {
             |error| Frame::Error(format!("Failed to parse command: {:?}", error)),
             |command| {
                 let mut db = db.lock().expect("Failed to get db");
+                tracing::info!("Execute command {:?}", command);
                 match command {
                     Command::Get(cmd) => {
                         if let Some(value) = db.get(cmd.key()) {
@@ -46,15 +46,28 @@ async fn process(socket: TcpStream, db: Db) {
             .expect("Failed to write frame");
     }
 }
-
 #[tokio::main]
 async fn main() {
+    // console_subscriber::init();
+
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_file(true)
+        .with_line_number(true)
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .pretty()
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set global subscriber");
+
     let listener = TcpListener::bind("127.0.0.1:6379")
         .await
         .expect("Failed to bind localhost:6379");
     let db = Arc::new(Mutex::new(HashMap::new()));
     loop {
         let (socket, _) = listener.accept().await.expect("Failed to get socket");
+        tracing::info!("Connect with {:?}", socket);
         let db = db.clone();
         tokio::spawn(async move {
             process(socket, db).await;
