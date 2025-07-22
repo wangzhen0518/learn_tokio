@@ -1,7 +1,13 @@
+#![allow(unused_imports)]
+
+use std::sync::Arc;
+
 use bytes::Bytes;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Mutex, mpsc, oneshot};
 
 type Responder<T> = oneshot::Sender<mini_redis::Result<T>>;
+
+#[derive(Debug)]
 enum Command {
     Get {
         key: String,
@@ -18,14 +24,28 @@ async fn client_server(mut rx: mpsc::Receiver<Command>) {
     let mut client = mini_redis::client::connect("127.0.0.1:6379")
         .await
         .expect("Failed to connect to 127.0.0.1:8379");
+    // let client = Arc::new(Mutex::new(client));
 
     while let Some(command) = rx.recv().await {
+        tracing::info!("Send command: {:?}", command);
         match command {
             Command::Get { key, resp } => {
-                let _ = resp.send(client.get(&key).await);
+                // let client = client.clone();
+                // tokio::spawn(async move {
+                //     let res = client.lock().await.get(&key).await;
+                let res = client.get(&key).await;
+                tracing::info!("Command GET receive: {:?}", res);
+                let _ = resp.send(res);
+                // });
             }
             Command::Set { key, val, resp } => {
-                let _ = resp.send(client.set(&key, val).await);
+                // let client = client.clone();
+                // tokio::spawn(async move {
+                // let res = client.lock().await.set(&key, val).await;
+                let res = client.set(&key, val).await;
+                tracing::info!("Command SEND receive: {:?}", res);
+                let _ = resp.send(res);
+                // });
             }
         }
     }
@@ -33,6 +53,8 @@ async fn client_server(mut rx: mpsc::Receiver<Command>) {
 
 #[tokio::main]
 async fn main() {
+    learn_tokio::utils::config_logger();
+
     let (tx, rx) = mpsc::channel(32);
     let manager = tokio::spawn(client_server(rx));
 
